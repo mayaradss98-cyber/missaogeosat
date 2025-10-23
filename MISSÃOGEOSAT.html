@@ -1,0 +1,783 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Missão GeoSat — O desafio das circunferências e coordenadas</title>
+<style>
+  :root{
+    --bg:#0b1030; --card:rgba(255,255,255,0.06); --accent:#6ee7ff;
+    --grid-soft:rgba(110,231,255,0.18); --text:#ffffff;
+    --cA:#4fc3f7; --cB:#b197fc; --cC:#6ee7ff;
+    --good:#70ff9f; --bad:#ff6b6b; --warn:#ffd166; --hudbg:rgba(8,12,30,.92);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:radial-gradient(1200px 800px at 50% -10%, #121745, #0b1030 60%, #050819 100%);
+    color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+    -webkit-user-select:none; user-select:none;
+  }
+  h1{margin:12px 0 6px;text-align:center;color:var(--accent);text-shadow:0 0 16px rgba(110,231,255,.45);font-weight:800}
+  #container{display:flex;gap:12px;padding:10px;min-height:calc(100vh - 70px)}
+  #left{flex:2;background:var(--card);border-radius:12px;padding:10px;display:flex;flex-direction:column;align-items:center;position:relative}
+  #right{flex:1;display:flex;flex-direction:column;gap:10px;overflow:auto;max-height:calc(100vh - 90px)}
+  .card{background:var(--card);border-radius:12px;padding:12px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:8px}
+  button{
+    background:linear-gradient(90deg,#1e90ff,#6a0dad);color:#fff;border:none;border-radius:10px;
+    padding:10px 14px;cursor:pointer;font-weight:600;box-shadow:0 0 10px rgba(110,231,255,.25);
+    -webkit-tap-highlight-color: transparent;
+  }
+  button.secondary{background:transparent;border:1px solid rgba(255,255,255,.2)}
+  button.toggled{outline:3px solid rgba(110,231,255,.5)}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  input, .neg-wrap{
+    width:100%;max-width:190px;display:inline-flex;gap:6px;align-items:center
+  }
+  .neg-wrap input{
+    flex:1;min-width:0;padding:8px 10px;border-radius:8px;border:1px solid rgba(255,255,255,.15);
+    background:rgba(10,16,40,.55);color:white;outline:none
+  }
+  .neg-wrap button{
+    padding:8px 10px;border-radius:8px;background:transparent;border:1px solid rgba(255,255,255,.25);
+    box-shadow:none
+  }
+  /* área do plano */
+  #canvasWrap{
+    width:98%;max-width:1150px;height:clamp(520px, 78vh, 860px);
+    border:2px solid rgba(110,231,255,.45);border-radius:16px;overflow:hidden;position:relative;
+    box-shadow:0 0 34px rgba(110,231,255,.18), inset 0 0 36px rgba(110,231,255,.12);
+  }
+  canvas{display:block;width:100%;height:100%}
+  #tooltip{position:absolute;background:var(--hudbg);padding:4px 8px;border-radius:6px;font-size:12px;border:1px solid rgba(255,255,255,.15);pointer-events:none;display:none;color:#fff}
+  #coordPanel{position:absolute;left:8px;bottom:8px;font-size:12px;background:var(--hudbg);padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.15)}
+  /* HUD do centro fixo */
+  #centerHUD{
+    position:absolute; background:var(--hudbg); color:#fff; font-size:12px;
+    padding:4px 8px; border-radius:6px; border:1px solid rgba(255,255,255,.15);
+    pointer-events:none; display:none;
+  }
+  /* tabuleiro */
+  #casas{display:flex;flex-wrap:wrap;gap:6px}
+  .casa{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:rgba(10,20,50,.6)}
+  .ativa{background:var(--accent);color:#012;font-weight:700}
+  #statsLine{font-size:14px;opacity:.95}
+  /* overlay tutorial */
+  #tutorial{
+    position:fixed;inset:0;background:rgba(3,6,18,.96);z-index:5000;display:flex;align-items:center;justify-content:center;padding:0
+  }
+  #tutorial .box{
+    width:min(94vw,980px);height:min(94vh,680px);display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
+    text-align:center;padding:14px 16px 12px;background:rgba(10,16,40,.6);border:1px solid rgba(255,255,255,.12);border-radius:16px;
+    box-shadow:0 0 28px rgba(110,231,255,.16), inset 0 0 28px rgba(110,231,255,.08)
+  }
+  #tutText{width:100%;max-width:900px;font-size:clamp(14px, 2.1vw, 18px);line-height:1.35}
+  #tutStageWrap{width:100%;flex:1;min-height:220px;margin:8px 0 10px;display:flex;align-items:center;justify-content:center}
+  #tutCanvas{width:100%;height:100%;background:rgba(9,12,30,.6);border:2px solid rgba(110,231,255,.45);border-radius:14px;box-shadow:inset 0 0 26px rgba(110,231,255,.1)}
+  /* botão som fixo */
+  #ambientBtn{
+    position:fixed; top:10px; right:12px; z-index:6000;
+    background:rgba(10,16,40,.7); border:1px solid rgba(255,255,255,.18);
+    color:#fff; border-radius:10px; padding:6px 10px; cursor:pointer; font-weight:700;
+    box-shadow:0 0 12px rgba(110,231,255,.25);
+  }
+  /* Painel de vitória à direita (não cobre o canvas) */
+  #victoryPanel{display:none}
+  #victoryPanel.show{display:block}
+  @media(max-width:980px){#container{flex-direction:column}#canvasWrap{height:70vh}}
+</style>
+</head>
+<body>
+  <h1>🚀 Missão GeoSat — O desafio das circunferências e coordenadas</h1>
+  <button id="ambientBtn" title="Ligar/Desligar som ambiente">🔇</button>
+
+  <div id="container">
+    <div id="left" class="card">
+      <div id="canvasWrap">
+        <canvas id="stage"></canvas>
+        <div id="tooltip"></div>
+        <div id="coordPanel">(x=0, y=0)</div>
+        <div id="centerHUD"></div>
+      </div>
+      <div class="controls">
+        <button id="toolA" title="Circunferência A (azul)">Desenhar A</button>
+        <button id="toolB" title="Circunferência B (lilás)">Desenhar B</button>
+        <button id="toolC" title="Circunferência C (ciano)">Desenhar C</button>
+        <button id="eraserBtn" class="secondary" title="Apagar um elemento">Borracha ✖</button>
+        <button id="clearBtn" class="secondary" title="Limpar todos">Limpar</button>
+        <button id="skipBtn" class="secondary" title="Pular missão">⏭️ Pular</button>
+      </div>
+    </div>
+
+    <div id="right">
+      <div class="card">
+        <b>Missão:</b>
+        <div id="challengeText" style="margin-top:6px;">O tutorial abrirá automaticamente. Depois, clique em <b>Começar Missão</b>.</div>
+      </div>
+      <div class="card">
+        <b>Centros e Raios:</b>
+        <div id="centers" style="margin-top:6px; white-space:pre-line;"></div>
+      </div>
+
+      <div class="card">
+        <b>Seu palpite (ponto secreto):</b><br>
+        <div class="neg-wrap" style="margin-top:6px">
+          <input id="guessX" type="text" inputmode="numeric" placeholder="x (ex.: -3)" />
+          <button id="negX" class="secondary" title="Alternar sinal de x">±</button>
+        </div>
+        <div class="neg-wrap" style="margin-top:6px">
+          <input id="guessY" type="text" inputmode="numeric" placeholder="y (ex.: -4)" />
+          <button id="negY" class="secondary" title="Alternar sinal de y">±</button>
+        </div>
+        <button id="submitGuess" class="secondary" style="margin-top:6px;">Enviar</button>
+        <div id="feedback" style="margin-top:6px; font-weight:700;"></div>
+      </div>
+
+      <div class="card" id="guessPanel">
+        <b>Chutar a figura misteriosa (pode vencer antes!)</b><br>
+        <input id="figureGuessLive" placeholder="Digite a figura (sem dicas)" />
+        <button id="figureSubmitLive">Chutar agora</button>
+        <div style="font-size:12px;opacity:.8">Você tem 2 tentativas no total.</div>
+        <div id="liveGuessFeedback" style="margin-top:6px; font-weight:700;"></div>
+      </div>
+
+      <div class="card">
+        <b>Curiosidade:</b>
+        <div id="edu" style="margin-top:6px;"></div>
+      </div>
+
+      <div class="card">
+        <b>Tempo restante:</b> <div id="timer" style="font-weight:700; margin-top:6px;">--:--</div>
+      </div>
+
+      <div class="card" id="statsCard">
+        <b>Estatísticas:</b>
+        <div id="statsLine" style="margin-top:6px;">Acertos: 0 • Erros: 0 • Pulos: 0 • Missão: 0/10 • Tempo total: 00:00 • Tentativas de figura: 2</div>
+      </div>
+
+      <!-- Painel de Vitória no lado direito -->
+      <div id="victoryPanel" class="card">
+        <b>🎉 Vitória!</b>
+        <div id="victoryMsg" style="margin-top:6px;"></div>
+        <button id="btnNovoJogo" class="secondary" style="margin-top:8px;">Novo jogo</button>
+      </div>
+
+      <!-- Painel final (se chegar ao fim sem chute antecipado) -->
+      <div id="finalPanel" class="card" style="display:none">
+        <b>Qual figura foi formada?</b><br>
+        <input id="figureGuess" placeholder="Digite o nome da figura" />
+        <button id="figureSubmit">Confirmar</button>
+        <div id="finalFeedback" style="margin-top:6px; font-weight:700;"></div>
+      </div>
+
+      <button id="startBtn">Começar Missão</button>
+    </div>
+  </div>
+
+  <!-- Som ambiente local (loop curto, leve) -->
+  <audio id="sAmbient" loop>
+    <source src="data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" type="audio/mp3">
+  </audio>
+
+  <!-- Tutorial -->
+  <div id="tutorial" aria-modal="true" role="dialog">
+    <div class="box">
+      <h2>🎓 Tutorial — Figuras Misteriosas</h2>
+      <div id="tutText">
+        <p>Em cada missão, desenhe 3 circunferências (A, B, C) com os <b>centros</b> e <b>raios</b> informados.</p>
+        <p>A interseção indica o <b>ponto secreto</b>. Revele 10 pontos e descubra a <b>figura misteriosa</b> formada pela sequência dos pontos.</p>
+        <p>Você pode <b>chutar a figura a qualquer momento</b> (2 tentativas no total). Se acertar antes, vence na hora!</p>
+        <p>Use a <b>Borracha</b> para apagar um círculo específico, ou <b>Pular</b> para avançar sem pontuar.</p>
+      </div>
+      <div id="tutStageWrap"><canvas id="tutCanvas"></canvas></div>
+      <div class="controls" style="justify-content:center">
+        <button id="btnPlayTut">Reproduzir animação</button>
+        <button id="btnStartGame" class="secondary">Começar Missão</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ================== ÁUDIO ================== */
+const sAmbient = document.getElementById('sAmbient');
+const ambientBtn = document.getElementById('ambientBtn');
+function unlockAmbient(){
+  const tryPlay = () => {
+    sAmbient.volume = 0.15;
+    sAmbient.play().then(()=>{ ambientBtn.textContent='🔊'; document.removeEventListener('pointerdown', tryPlay, true); })
+                   .catch(()=>{});
+  };
+  document.addEventListener('pointerdown', tryPlay, true);
+}
+ambientBtn.addEventListener('click', ()=>{
+  if(sAmbient.paused){ sAmbient.play().then(()=>ambientBtn.textContent='🔊'); }
+  else{ sAmbient.pause(); ambientBtn.textContent='🔇'; }
+});
+unlockAmbient();
+
+/* ================== CANVAS & GRID ================== */
+const stage = document.getElementById('stage');
+const ctx = stage.getContext('2d', {alpha:false});
+const wrap = document.getElementById('canvasWrap');
+const tooltip = document.getElementById('tooltip');
+const coordPanel = document.getElementById('coordPanel');
+const centerHUD = document.getElementById('centerHUD');
+
+let cx=0,cy=0,unit=20,dpr=1;
+function resizeStage(){
+  const r = wrap.getBoundingClientRect();
+  dpr = window.devicePixelRatio||1;
+  stage.width = Math.floor(r.width * dpr);
+  stage.height = Math.floor(r.height * dpr);
+  stage.style.width = Math.floor(r.width)+'px';
+  stage.style.height= Math.floor(r.height)+'px';
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  cx = r.width/2; cy = r.height/2;
+  unit = Math.min(r.width, r.height)/22;   // −10..10
+  drawAll();
+}
+window.addEventListener('resize', ()=>{ if(tutorialVisible()) return; resizeStage(); }, {passive:true});
+
+function drawGrid(){
+  const x0 = cx - 10*unit, y0 = cy - 10*unit, size = 20*unit;
+  ctx.strokeStyle = 'rgba(110,231,255,.45)'; ctx.lineWidth = 2;
+  roundRect(ctx, x0, y0, size, size, 12); ctx.stroke();
+  ctx.lineWidth = 1.2;
+  for(let i=-10;i<=10;i++){
+    const x = cx + i*unit, y = cy + i*unit;
+    ctx.strokeStyle = (i===0)? 'rgba(255,255,255,.95)' : 'rgba(110,231,255,.18)';
+    ctx.beginPath(); ctx.moveTo(x, cy-10*unit); ctx.lineTo(x, cy+10*unit); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx-10*unit, y); ctx.lineTo(cx+10*unit, y); ctx.stroke();
+    if(i!==0){
+      ctx.fillStyle = '#a7d9ff'; ctx.font = '12px system-ui';
+      ctx.fillText(i.toString(), x-6, cy+12);
+      ctx.fillText((-i).toString(), cx+6, y-2);
+    }
+  }
+  ctx.fillStyle = '#e9f2ff'; ctx.font = 'bold 14px system-ui';
+  ctx.fillText('X', cx + 10*unit - 12, cy + 14);
+  ctx.fillText('Y', cx + 6, cy - 10*unit + 12);
+}
+function roundRect(c, x, y, w, h, r){
+  c.beginPath();
+  c.moveTo(x+r, y);
+  c.arcTo(x+w, y,   x+w, y+h, r);
+  c.arcTo(x+w, y+h, x,   y+h, r);
+  c.arcTo(x,   y+h, x,   y,   r);
+  c.arcTo(x,   y,   x+w, y,   r);
+  c.closePath();
+}
+
+/* ================== DESENHO (CÍRCULOS) ================== */
+const colors = { A:getCSS('--cA'), B:getCSS('--cB'), C:getCSS('--cC') };
+let currentTool='A', eraseMode=false;
+
+const circles = [];   // {x,y,r,color}
+const centers  = [];  // {x,y,color}
+const revealed = [];  // {x,y} em px
+
+let isDown=false, startPos=null, preview=null;
+let centerHUDState = null;
+const DRAG_THRESHOLD=10;
+
+function toCanvas(e){
+  const rect = stage.getBoundingClientRect();
+  const touch = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
+  const clientX = touch ? touch.clientX : e.clientX;
+  const clientY = touch ? touch.clientY : e.clientY;
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+function toGrid(p){ return { gx:(p.x - cx)/unit, gy:(cy - p.y)/unit }; }
+
+function drawAll(){
+  ctx.clearRect(0,0,stage.width/dpr,stage.height/dpr);
+  drawGrid();
+
+  // círculos fixos (só CONTORNO)
+  for(const c of circles){
+    ctx.strokeStyle = c.color; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(c.x, c.y, c.r, 0, Math.PI*2); ctx.stroke();
+  }
+  // centros (pontinho preenchido)
+  for(const d of centers){
+    ctx.fillStyle = d.color; ctx.beginPath(); ctx.arc(d.x, d.y, 3, 0, Math.PI*2); ctx.fill();
+  }
+
+  // polilinha dos pontos revelados
+  if(revealed.length>=2){
+    ctx.strokeStyle = '#ffee77'; ctx.lineWidth = 2; ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.shadowColor='#ffee77'; ctx.shadowBlur=6;
+    ctx.beginPath(); ctx.moveTo(revealed[0].x, revealed[0].y);
+    for(let i=1;i<revealed.length;i++) ctx.lineTo(revealed[i].x, revealed[i].y);
+    ctx.stroke(); ctx.shadowBlur=0;
+  }
+  // pontos revelados
+  for(const p of revealed){
+    ctx.fillStyle='#ffee77'; ctx.strokeStyle='#fff'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  }
+  // preview (contorno tracejado)
+  if(preview){
+    ctx.setLineDash([6,4]); ctx.strokeStyle = preview.color; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(preview.x, preview.y, preview.r, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  // HUD do centro
+  if(centerHUDState && centerHUDState.visible){
+    centerHUD.style.display='block';
+    centerHUD.textContent = centerHUDState.text;
+    centerHUD.style.left = `${centerHUDState.domX}px`;
+    centerHUD.style.top  = `${centerHUDState.domY}px`;
+  }else{
+    centerHUD.style.display='none';
+  }
+}
+
+function hitCircleAt(p){
+  for(let i=circles.length-1;i>=0;i--){
+    const c = circles[i];
+    const d = Math.hypot(p.x - c.x, p.y - c.y);
+    if(Math.abs(d - c.r) < 6) return i;
+    if(d < 6) return i;
+  }
+  return null;
+}
+
+/* eventos */
+stage.addEventListener('mousedown', pointerDown, {passive:false});
+stage.addEventListener('touchstart', pointerDown, {passive:false});
+stage.addEventListener('mousemove', pointerMove, {passive:false});
+stage.addEventListener('touchmove', pointerMove, {passive:false});
+stage.addEventListener('mouseup', pointerUp, {passive:false});
+stage.addEventListener('touchend', pointerUp, {passive:false});
+stage.addEventListener('mouseleave', ()=> tooltip.style.display='none', {passive:true});
+
+function pointerDown(e){
+  e.preventDefault();
+  const p = toCanvas(e);
+  if(eraseMode){
+    const idx = hitCircleAt(p);
+    if(idx!==null){ circles.splice(idx,1); centers.splice(idx,1); drawAll(); }
+    return;
+  }
+  isDown = true; startPos = p;
+
+  const g = toGrid(p);
+  centerHUDState = {
+    text: `Centro ${currentTool}: (${Math.round(g.gx)}, ${Math.round(g.gy)})`,
+    domX: wrap.getBoundingClientRect().left + p.x + 12,
+    domY: wrap.getBoundingClientRect().top  + p.y - 30,
+    visible: true
+  };
+
+  preview = {x:p.x, y:p.y, r:0, color:colors[currentTool]};
+  drawAll();
+}
+function pointerMove(e){
+  e.preventDefault();
+  const p = toCanvas(e);
+  const g = toGrid(p);
+  const wr = wrap.getBoundingClientRect();
+  tooltip.style.left = (wr.left + p.x + 12) + 'px';
+  tooltip.style.top  = (wr.top  + p.y + 12) + 'px';
+  tooltip.style.display = 'block';
+
+  tooltip.textContent = `(${Math.round(g.gx)}, ${Math.round(g.gy)})` + (isDown && preview ? ` • r=${(Math.hypot(p.x-startPos.x,p.y-startPos.y)/unit).toFixed(1)}` : '');
+  coordPanel.textContent = `(x=${Math.round(g.gx)}, y=${Math.round(g.gy)})`;
+
+  if(!isDown || !preview) return;
+  preview.r = Math.hypot(p.x - startPos.x, p.y - startPos.y);
+  drawAll();
+}
+function pointerUp(e){
+  e.preventDefault();
+  if(!isDown || !preview) return;
+  isDown = false;
+  if(preview.r < DRAG_THRESHOLD){ preview = null; drawAll(); return; }
+  circles.push({x:preview.x, y:preview.y, r:preview.r, color:preview.color});
+  centers.push({x:preview.x, y:preview.y, color:preview.color});
+  preview = null;
+  drawAll();
+}
+
+/* ================== FIGURAS MISTERIOSAS ================== */
+/* ATENÇÃO: cada figura tem 10 pontos inteiros (|x|,|y| <= 6) para 10 missões */
+const FIGURES = [
+  // ⭐ Estrela (nítida)
+  { key:'estrela', names:['estrela','estrela de 5 pontas','estrela de cinco pontas','★','⭐','star'],
+    points:[[0,6],[2,1],[6,1],[3,-1],[4,-6],[0,-3],[-4,-6],[-3,-1],[-6,1],[-2,1]]
+  },
+  // 🔺 Triângulo (equilátero aproximado e claro)
+  { key:'triangulo', names:['triângulo','triangulo','triangulo equilatero','triângulo equilátero','triangle','🔺'],
+    points:[[0,6],[6,-4],[-6,-4],[0,6],[3,1],[0,6],[-3,1],[0,6],[0,-4],[0,6]]
+  },
+  // ⬜ Quadrado (bem definido nas bordas)
+  { key:'quadrado', names:['quadrado','quadrilátero','retângulo','quadrado perfeito','square','⬜'],
+    points:[[-5,5],[0,5],[5,5],[5,0],[5,-5],[0,-5],[-5,-5],[-5,0],[-5,5],[0,5]]
+  },
+  // ⭕ Círculo (aproximação com 10 pontos inteiros)
+  { key:'circulo', names:['círculo','circulo','circunferência','circunferencia','circle','⭕'],
+    points:[[6,0],[4,4],[0,6],[-4,4],[-6,0],[-4,-4],[0,-6],[4,-4],[6,0],[4,4]]
+  },
+  // ♦ Losango (simétrico, fácil)
+  { key:'losango', names:['losango','diamante','rombo','rhombus','♦'],
+    points:[[0,6],[4,0],[0,-6],[-4,0],[0,6],[4,0],[0,-6],[-4,0],[0,6],[4,0]]
+  },
+  // ❤️ Coração (ajustado para parecer coração, tudo inteiro)
+  { key:'coracao', names:['coração','coracao','heart','❤','❤️'],
+    points:[[0,6],[4,6],[6,3],[6,1],[3,-3],[0,-6],[-3,-3],[-6,1],[-6,3],[-4,6]]
+  },
+  // 🔠 Letra A (traço principal + barra)
+  { key:'letra_a', names:['a','letra a','a maiúsculo','letra a maiusculo','letra a maiúscula','letter a'],
+    points:[[-5,-5],[-3,6],[0,6],[3,6],[5,-5],[3,-5],[2,0],[-2,0],[-3,-5],[-5,-5]]
+  },
+  // 🔠 Letra B (espinha + dois lóbulos)
+  { key:'letra_b', names:['b','letra b','b maiúsculo','letra b maiusculo','letra b maiúscula','letter b'],
+    points:[[-5,6],[0,6],[3,4],[0,2],[-5,2],[-5,-6],[0,-6],[3,-4],[0,-2],[-5,-2]]
+  }
+];
+
+/* Raios aleatórios 1..10 mantendo o ponto secreto como interseção:
+   Centros: (px + rA, py), (px, py + rB), (px - rC, py)  */
+function randInt(min,max){ return Math.floor(Math.random()*(max-min+1))+min; }
+function missionForPoint(px, py){
+  const maxA = Math.min(10, 10 - px);
+  const maxB = Math.min(10, 10 - py);
+  const maxC = Math.min(10, 10 + px);
+  const rA = Math.max(1, randInt(1, Math.max(1, Math.min(10, maxA))));
+  const rB = Math.max(1, randInt(1, Math.max(1, Math.min(10, maxB))));
+  const rC = Math.max(1, randInt(1, Math.max(1, Math.min(10, maxC))));
+  const cA=[px + rA, py], cB=[px, py + rB], cC=[px - rC, py];
+  return { a:cA, rA, b:cB, rB, c:cC, rC, secreto:[px,py] };
+}
+function missionsFromPoints(points){ return points.map(([x,y])=>missionForPoint(x,y)); }
+function pickRandomFigure(){ return FIGURES[Math.floor(Math.random()*FIGURES.length)]; }
+function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function two(n){return n.toString().padStart(2,'0')}
+function formatTime(s){const m=Math.floor(s/60),sec=s%60;return `${two(m)}:${two(sec)}`}
+
+/* ================== UI & FLUXO ================== */
+const challengeText=document.getElementById('challengeText');
+const centersDiv = document.getElementById('centers');
+const eduDiv     = document.getElementById('edu');
+const timerDiv   = document.getElementById('timer');
+const feedback   = document.getElementById('feedback');
+const statsLine  = document.getElementById('statsLine');
+
+const btnA=document.getElementById('toolA');
+const btnB=document.getElementById('toolB');
+const btnC=document.getElementById('toolC');
+const btnEraser=document.getElementById('eraserBtn');
+const btnClear=document.getElementById('clearBtn');
+const btnSkip=document.getElementById('skipBtn');
+
+const casasDiv=document.getElementById('casas')||(()=>{
+  const box=document.createElement('div'); box.id='casas'; document.getElementById('statsCard').after(box); return box;
+})();
+if(!document.querySelector('#casas .casa')){
+  for(let i=0;i<10;i++){ const d=document.createElement('div'); d.className='casa'; d.textContent=i+1; casasDiv.appendChild(d); }
+}
+const casas=[...document.querySelectorAll('#casas .casa')];
+
+btnA.addEventListener('click', ()=>{currentTool='A'; eraseMode=false; toggleButtons();}, {passive:true});
+btnB.addEventListener('click', ()=>{currentTool='B'; eraseMode=false; toggleButtons();}, {passive:true});
+btnC.addEventListener('click', ()=>{currentTool='C'; eraseMode=false; toggleButtons();}, {passive:true});
+btnEraser.addEventListener('click', ()=>{eraseMode=!eraseMode; toggleButtons();}, {passive:true});
+btnClear.addEventListener('click', ()=>{circles.length=0; centers.length=0; drawAll();}, {passive:true});
+btnSkip.addEventListener('click', ()=>{skipMission();}, {passive:true});
+function toggleButtons(){ btnEraser.classList.toggle('toggled', eraseMode); }
+
+let ordemMissoes=[], missionIndex=0, acertos=0, erros=0, pulos=0;
+let timerInterval=null, tempoDesafio=60, startGameTime=null;
+let figureTries=2;
+let selectedFigure=null;
+let figureSolved=false;
+
+const curios = [
+"📡 Trilateração: três distâncias definem um ponto no plano — é a ideia por trás do GPS.",
+"🛰️ Precisão importa: um pequeno erro no raio desloca bastante a interseção.",
+"📶 Telefonia usa triangulação de antenas para estimar posição de aparelhos.",
+"📏 Fórmula da circunferência: (x−h)² + (y−k)² = r² — distância euclidiana.",
+"🎯 Simetrias nos centros/raios ajudam a prever o quadrante do ponto secreto.",
+"🤖 Robôs usam balizas e trilateração para navegação indoor.",
+"🧭 Mapas de obra: cruzar distâncias a marcos posiciona máquinas com segurança.",
+"🔍 Interseções de círculos são robustas a certos ruídos de medição.",
+"✈️ Rádio-navegação combina distâncias e ângulos para orientar aeronaves.",
+"🌌 Em astrometria, cruzar medidas reduz incerteza e localiza objetos."
+];
+
+function updateStats(){
+  const spent = startGameTime ? Math.floor((Date.now()-startGameTime)/1000) : 0;
+  statsLine.textContent = `Acertos: ${acertos} • Erros: ${erros} • Pulos: ${pulos} • Missão: ${Math.min(missionIndex+1,10)}/10 • Tempo total: ${formatTime(spent)} • Tentativas de figura: ${figureTries}`;
+}
+function startTimer(){
+  clearInterval(timerInterval);
+  let t=tempoDesafio;
+  timerDiv.textContent = formatTime(t);
+  timerInterval=setInterval(()=>{
+    t--; timerDiv.textContent=formatTime(t); updateStats();
+    if(t<=0){ clearInterval(timerInterval); erros++; feedback.style.color='var(--bad)'; feedback.textContent='⛔ Tempo esgotado. Próxima missão...'; setTimeout(nextMission, 900); }
+  },1000);
+}
+
+function loadMission(idx){
+  circles.length=0; centers.length=0; preview=null; isDown=false; startPos=null;
+  centerHUDState = null; centerHUD.style.display='none';
+
+  const m = ordemMissoes[idx];
+  const enun =
+`🪐 Missão ${idx+1}/10: Trace as órbitas A, B e C e localize a interseção!
+Centro A: (${m.a[0]}, ${m.a[1]}), raio ${m.rA}
+Centro B: (${m.b[0]}, ${m.b[1]}), raio ${m.rB}
+Centro C: (${m.c[0]}, ${m.c[1]}), raio ${m.rC}`;
+  challengeText.textContent = enun;
+  centersDiv.textContent =
+`Centro A: (${m.a[0]}, ${m.a[1]}) — rA=${m.rA}
+Centro B: (${m.b[0]}, ${m.b[1]}) — rB=${m.rB}
+Centro C: (${m.c[0]}, ${m.c[1]}) — rC=${m.rC}`;
+  eduDiv.textContent = curios[idx] || '';
+  feedback.textContent='';
+
+  casas.forEach(c=>c.classList.remove('ativa'));
+  if(idx<casas.length) casas[idx].classList.add('ativa');
+
+  drawAll();
+  startTimer(); updateStats();
+}
+
+/* ======= PONTO SECRETO ======= */
+function parseIntSafe(v){
+  if(typeof v!=='string') return NaN;
+  v=v.trim().replace(',', '.'); // segurança
+  if(!/^[-+]?\d+(\.0+)?$/.test(v)) return NaN; // inteiros (aceita - e +)
+  return parseInt(v,10);
+}
+document.getElementById('negX').addEventListener('click', ()=>{
+  const el=document.getElementById('guessX'); el.value = el.value.trim().startsWith('-') ? el.value.trim().replace(/^-/, '') : ('-' + el.value.trim().replace(/^\+/, ''));
+});
+document.getElementById('negY').addEventListener('click', ()=>{
+  const el=document.getElementById('guessY'); el.value = el.value.trim().startsWith('-') ? el.value.trim().replace(/^-/, '') : ('-' + el.value.trim().replace(/^\+/, ''));
+});
+
+document.getElementById('submitGuess').addEventListener('click', ()=>{
+  const x=parseIntSafe(document.getElementById('guessX').value);
+  const y=parseIntSafe(document.getElementById('guessY').value);
+  if(Number.isNaN(x) || Number.isNaN(y)){ feedback.style.color='var(--warn)'; feedback.textContent='Digite números inteiros (use ± para negativos).'; return; }
+  const m=ordemMissoes[missionIndex];
+  const dist=Math.hypot(x - m.secreto[0], y - m.secreto[1]);
+  if(dist<0.5){
+    feedback.style.color='var(--good)'; feedback.textContent='✅ Acertou! Ponto revelado.';
+    const px = cx + x*unit, py = cy - y*unit;
+    revealed.push({x:px, y:py});
+    acertos++;
+  }else{
+    feedback.style.color='var(--bad)'; feedback.textContent='❌ Ponto incorreto. Próxima missão...';
+    erros++;
+  }
+  clearInterval(timerInterval);
+  setTimeout(nextMission, 900);
+  drawAll();
+}, {passive:true});
+
+function nextMission(){
+  if(figureSolved) return; // se já resolveu a figura, não avança
+  if(erros>=11){ return gameOver('💀 Game Over — muitos erros.'); }
+  missionIndex++;
+  if(missionIndex>=ordemMissoes.length){ clearInterval(timerInterval); showFinalGuess(); return; }
+  loadMission(missionIndex);
+}
+function skipMission(){
+  if(figureSolved) return;
+  feedback.style.color='#ddd'; feedback.textContent='⏭️ Missão pulada.';
+  pulos++; clearInterval(timerInterval); setTimeout(nextMission, 500);
+}
+
+/* ======= CHUTES DA FIGURA ======= */
+const finalPanel=document.getElementById('finalPanel');
+const figureSubmit=document.getElementById('figureSubmit');
+const finalFeedback=document.getElementById('finalFeedback');
+const figureGuessLive=document.getElementById('figureGuessLive');
+const figureSubmitLive=document.getElementById('figureSubmitLive');
+const liveGuessFeedback=document.getElementById('liveGuessFeedback');
+
+function showFinalGuess(){ finalPanel.style.display='block'; finalFeedback.textContent=''; }
+function checkFigureGuess(value, targetNames){
+  const val=(value||'').trim().toLowerCase(); if(!val) return null;
+  return targetNames.map(n=>n.toLowerCase()).includes(val);
+}
+
+function revealRemainingShape(){
+  if(!selectedFigure) return;
+  const pts = selectedFigure.points.map(([gx,gy])=>({x: cx + gx*unit, y: cy - gy*unit}));
+  revealed.length = 0;
+  for(const p of pts) revealed.push({x:p.x, y:p.y});
+  drawAll();
+}
+
+function showVictoryPanel(msg){
+  const vp=document.getElementById('victoryPanel');
+  document.getElementById('victoryMsg').textContent = msg;
+  vp.classList.add('show');
+}
+
+document.getElementById('btnNovoJogo').addEventListener('click', ()=>{
+  resetToTutorial();
+});
+
+function onCorrectFigure(){
+  figureSolved=true;
+  clearInterval(timerInterval);
+  revealRemainingShape();
+  showVictoryPanel('Você descobriu a figura! A forma completa foi desenhada no plano.');
+  updateStats();
+}
+
+figureSubmit.addEventListener('click', ()=>{
+  const ok = checkFigureGuess(document.getElementById('figureGuess').value, selectedFigure.names);
+  if(ok===null) return;
+  if(ok){
+    finalFeedback.style.color='var(--good)'; finalFeedback.textContent='🏆 Você acertou!';
+    onCorrectFigure();
+  } else {
+    figureTries--;
+    if(figureTries>0){
+      finalFeedback.style.color='var(--bad)'; finalFeedback.textContent=`❌ Resposta incorreta. Tente novamente. (${figureTries} restante)`;
+    } else {
+      gameOver('💀 Game Over — Figura incorreta.');
+    }
+  }
+  updateStats();
+}, {passive:true});
+
+figureSubmitLive.addEventListener('click', ()=>{
+  if(figureTries<=0 || !selectedFigure) return;
+  const ok = checkFigureGuess(figureGuessLive.value, selectedFigure.names);
+  if(ok===null) return;
+  if(ok){
+    liveGuessFeedback.style.color='var(--good)';
+    liveGuessFeedback.textContent='🏆 Você acertou a figura antes do fim! A forma completa foi desenhada.';
+    onCorrectFigure();
+  } else {
+    figureTries--;
+    if(figureTries>0){
+      liveGuessFeedback.style.color='var(--warn)';
+      liveGuessFeedback.textContent=`⚠️ Não é essa figura. Restam ${figureTries} tentativa(s).`;
+    } else {
+      liveGuessFeedback.style.color='var(--bad)';
+      liveGuessFeedback.textContent='❌ Sem tentativas restantes.';
+      gameOver('💀 Game Over — Figura incorreta.');
+    }
+  }
+  updateStats();
+}, {passive:true});
+
+function endSummary(victory){
+  resetToTutorial();
+}
+function gameOver(msg){
+  alert(msg);
+  resetToTutorial();
+}
+
+/* ================== RESET / INÍCIO ================== */
+function resetToTutorial(){
+  clearInterval(timerInterval);
+  circles.length=0; centers.length=0; revealed.length=0;
+  isDown=false; preview=null; startPos=null; centerHUDState=null; centerHUD.style.display='none';
+  missionIndex=0; acertos=0; erros=0; pulos=0; selectedFigure=null; figureTries=2; figureSolved=false;
+  challengeText.textContent='O tutorial abrirá automaticamente. Depois, clique em “Começar Missão”.';
+  centersDiv.textContent=''; eduDiv.textContent=''; feedback.textContent='';
+  timerDiv.textContent='--:--';
+  statsLine.textContent='Acertos: 0 • Erros: 0 • Pulos: 0 • Missão: 0/10 • Tempo total: 00:00 • Tentativas de figura: 2';
+  finalPanel.style.display='none'; document.getElementById('figureGuess').value=''; finalFeedback.textContent='';
+  liveGuessFeedback.textContent=''; figureGuessLive.value='';
+  document.getElementById('victoryPanel').classList.remove('show');
+  casas.forEach(c=>c.classList.remove('ativa'));
+  showTutorial();
+  drawAll();
+}
+
+/* botões principais */
+document.getElementById('startBtn').addEventListener('click', ()=>{ showTutorial(); }, {passive:true});
+document.getElementById('btnStartGame').addEventListener('click', startFromTutorial, {passive:true});
+document.getElementById('btnPlayTut').addEventListener('click', runTutorial, {passive:true});
+
+function startFromTutorial(){
+  document.getElementById('tutorial').style.display='none';
+  resizeStage();
+  selectedFigure = pickRandomFigure();
+  ordemMissoes = missionsFromPoints(selectedFigure.points);
+  missionIndex=0; acertos=0; erros=0; pulos=0; revealed.length=0; figureTries=2; figureSolved=false;
+  // até 10 min (600s), default 600
+  const t=parseInt(prompt('Defina o tempo por missão (30 a 600 segundos):','600'),10);
+  if(!Number.isNaN(t)&&t>=30&&t<=600) tempoDesafio=t;
+  startGameTime=Date.now(); loadMission(missionIndex);
+  if(sAmbient.paused){ sAmbient.play().catch(()=>{}); }
+}
+function showTutorial(){ document.getElementById('tutorial').style.display='flex'; runTutorial(); }
+function tutorialVisible(){ return document.getElementById('tutorial').style.display !== 'none'; }
+
+/* ================== Tutorial animado (somente contorno) ================== */
+function runTutorial(){
+  const c = document.getElementById('tutCanvas');
+  const b = c.getBoundingClientRect();
+  const d = window.devicePixelRatio||1;
+  c.width  = Math.floor(b.width  * d);
+  c.height = Math.floor(b.height * d);
+  const k = c.getContext('2d');
+  k.setTransform(d,0,0,d,0,0);
+  k.clearRect(0,0,b.width,b.height);
+
+  const tx = b.width/2, ty=b.height/2, tu = Math.min(b.width,b.height)/4.2;
+  // grade leve
+  k.strokeStyle='rgba(110,231,255,.18)'; k.lineWidth=1;
+  for(let i=-4;i<=4;i++){
+    const x=tx+i*tu/2, y=ty+i*tu/2;
+    k.beginPath(); k.moveTo(x,ty-2*tu); k.lineTo(x,ty+2*tu); k.stroke();
+    k.beginPath(); k.moveTo(tx-2*tu,y); k.lineTo(tx+2*tu,y); k.stroke();
+  }
+  // eixos destacados
+  k.strokeStyle='rgba(255,255,255,.9)'; k.lineWidth=2;
+  k.beginPath(); k.moveTo(20,ty); k.lineTo(b.width-20,ty); k.stroke();
+  k.beginPath(); k.moveTo(tx,20); k.lineTo(tx,b.height-20); k.stroke();
+
+  // três circunferências com interseção no centro (0,0) — CONTORNO apenas
+  const centers = [
+    {c:[ 1, 0], color:getCSS('--cA'), r:1},
+    {c:[-0.5,  Math.sqrt(3)/2], color:getCSS('--cB'), r:1},
+    {c:[-0.5, -Math.sqrt(3)/2], color:getCSS('--cC'), r:1}
+  ];
+  let i=0, r=0, target=0, cx0=0, cy0=0;
+  function step(){
+    if(i>=centers.length){
+      // ponto central (marcador)
+      k.fillStyle='#ffee77'; k.strokeStyle='#fff'; k.lineWidth=2;
+      k.beginPath(); k.arc(tx,ty,6,0,Math.PI*2); k.fill(); k.stroke();
+      return;
+    }
+    const s = centers[i];
+    cx0 = tx + s.c[0]*tu; cy0 = ty - s.c[1]*tu; target = s.r*tu;
+    // centro (pontinho) preenchido; circunferência só contorno
+    k.fillStyle=s.color; k.beginPath(); k.arc(cx0,cy0,3,0,Math.PI*2); k.fill();
+    r=0;
+    const anim = setInterval(()=>{
+      k.strokeStyle=s.color; k.lineWidth=3;
+      k.beginPath(); k.arc(cx0,cy0,r,0,Math.PI*2); k.stroke(); // SOMENTE CONTORNO
+      r += 2;
+      if(r>=target){ clearInterval(anim); i++; setTimeout(step, 300); }
+    }, 16);
+  }
+  step();
+}
+
+/* ================== Helpers ================== */
+function getCSS(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+/* ================== Inicialização ================== */
+resizeStage();
+showTutorial();
+toggleButtons();
+</script>
+</body>
+</html>
